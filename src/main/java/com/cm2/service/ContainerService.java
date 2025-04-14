@@ -10,7 +10,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -27,6 +26,7 @@ public class ContainerService {
 
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
+            //CONTAINER ID...STATUS, PORTS, NAMES 제거용
             reader.readLine();
 
             while ((line = reader.readLine()) != null) {
@@ -46,13 +46,9 @@ public class ContainerService {
                 int restartCount = 0;
 
                 // 필터링: 네임스페이스 필터 (컨테이너 이름에 namespace 문자열 포함 여부)
-                if (namespace != null && !namespace.isEmpty() && !name.contains(namespace)) {
-                    continue;
-                }
+                if (namespace != null && !namespace.isEmpty() && !name.contains(namespace)) continue;
                 // 필터링: status 필터 (대소문자 구분 없이)
-                if (status != null && !status.isEmpty() && !state.equalsIgnoreCase(status)) {
-                    continue;
-                }
+                if (status != null && !status.isEmpty() && !state.equalsIgnoreCase(status)) continue;
 
                 ContainerDetail detail = ContainerDetail.builder()
                         .id(containerId)
@@ -95,13 +91,11 @@ public class ContainerService {
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             StringBuilder jsonOutput = new StringBuilder();
             String line;
-            while ((line = reader.readLine()) != null) {
-                jsonOutput.append(line);
-            }
+            while ((line = reader.readLine()) != null) jsonOutput.append(line);
 
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode root = objectMapper.readTree(jsonOutput.toString());
-            if (root.isArray() && root.size() > 0) {
+            if (root.isArray() && !root.isEmpty()) {
                 JsonNode containerNode = root.get(0);
                 String id = containerNode.path("Id").asText();
                 String name = containerNode.path("Name").asText().replace("/", "");

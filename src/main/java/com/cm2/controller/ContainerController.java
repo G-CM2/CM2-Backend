@@ -25,9 +25,9 @@ public class ContainerController {
 
         try {
             ContainerInfoResponse response = containerService.getContainerInfo(namespace, status, limit, page);
-            if (response.getTotal() == 0) {
+            if (response.getTotal() == 0)
                 return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-            }
+
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (IllegalArgumentException ex) {
             return new ResponseEntity<>(ex.getMessage(), HttpStatus.BAD_REQUEST);
@@ -41,11 +41,10 @@ public class ContainerController {
     public ResponseEntity<?> getContainerDetail(@PathVariable String containerId) {
         try {
             ContainerDetail detail = containerService.getContainerDetail(containerId);
-            if (detail == null) {
+            if (detail == null)
                 return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-            } else {
-                return new ResponseEntity<>(detail, HttpStatus.OK);
-            }
+
+            return new ResponseEntity<>(detail, HttpStatus.OK);
         } catch (IllegalArgumentException ex) {
             return new ResponseEntity<>(ex.getMessage(), HttpStatus.BAD_REQUEST);
         } catch (Exception ex) {
