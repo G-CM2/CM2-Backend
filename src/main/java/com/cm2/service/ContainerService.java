@@ -1,5 +1,6 @@
 package com.cm2.service;
 
+import com.cm2.entity.Action;
 import com.cm2.entity.dto.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,20 +11,84 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Service
 @Slf4j
 public class ContainerService {
 
+    private static class StatsResult {
+        public double cpuUsage;
+        public int memoryUsage;
+        public StatsResult(double cpuUsage, int memoryUsage) {
+            this.cpuUsage = cpuUsage;
+            this.memoryUsage = memoryUsage;
+        }
+    }
+
+    private double parseCpuUsage(String cpuStr) {
+        if (cpuStr == null) return 0.0;
+        cpuStr = cpuStr.replace("%", "").trim();
+        try {
+            return Double.parseDouble(cpuStr);
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
+    }
+
+    private int parseMemoryUsage(String memStr) {
+        if (memStr == null) return 0;
+        memStr = memStr.toUpperCase().trim();
+        double value = 0.0;
+        if (memStr.endsWith("GIB")) {
+            value = Double.parseDouble(memStr.replace("GIB", "").trim()) * 1024;
+        } else if (memStr.endsWith("MIB")) {
+            value = Double.parseDouble(memStr.replace("MIB", "").trim());
+        } else if (memStr.endsWith("KIB")) {
+            value = Double.parseDouble(memStr.replace("KIB", "").trim()) / 1024;
+        } else {
+            try {
+                value = Double.parseDouble(memStr);
+            } catch (Exception e) {
+                value = 0.0;
+            }
+        }
+        return (int) Math.round(value);
+    }
+
+    private StatsResult getStatsForContainer(String containerId) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("docker", "stats", "--no-stream", containerId);
+            Process process = pb.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+
+            // 첫 줄은 헤더이므로 읽고 버립니다.
+            String header = reader.readLine();
+            // 두 번째 줄은 실제 데이터.
+            String dataLine = reader.readLine();
+            process.waitFor();
+
+            if (dataLine != null && !dataLine.isEmpty()) {
+                String[] tokens = dataLine.split("\\s+");
+
+                double cpuUsage = parseCpuUsage(tokens[2]);
+                int memoryUsage = parseMemoryUsage(tokens[3]);
+                return new StatsResult(cpuUsage, memoryUsage);
+            }
+        } catch (IOException | InterruptedException e) {
+            log.error("docker stats 명령어 실행 중 오류", e);
+        }
+        return new StatsResult(0.0, 0);
+    }
+
     // 모든 컨테이너 목록 조회 API용
-    public ContainerInfoResponse getContainerInfo(String namespace, String status, int limit, int page) {
-        List<ContainerDetail> allContainers = new ArrayList<>();
+    public ContainerListResponse getContainerInfo(String namespace, String status, int limit, int page) {
+        List<ContainerOverview> allOverviews = new ArrayList<>();
         try {
             // docker ps -a 명령어 실행
             ProcessBuilder builder = new ProcessBuilder("docker", "ps", "-a", "--no-trunc");
             Process process = builder.start();
-
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             //CONTAINER ID...STATUS, PORTS, NAMES 제거용
@@ -37,44 +102,40 @@ public class ContainerService {
                 String image = tokens[1];
                 String state = tokens[2];
                 String name = tokens[tokens.length - 1];
-                // 목록 조회에서는 생성일, health, cpu_usage, memory_usage, restart_count 등에 대해
-                // 추후 docker inspect 를 통해 보완 가능하나, 일단은 예시값 혹은 기본값을 사용합니다.
-                String createdAt = "2025-03-28T10:15:30Z";
-                String health = "healthy";
-                double cpuUsage = 12.5;
-                int memoryUsage = 256;
-                int restartCount = 0;
 
                 // 필터링: 네임스페이스 필터 (컨테이너 이름에 namespace 문자열 포함 여부)
                 if (namespace != null && !namespace.isEmpty() && !name.contains(namespace)) continue;
                 // 필터링: status 필터 (대소문자 구분 없이)
                 if (status != null && !status.isEmpty() && !state.equalsIgnoreCase(status)) continue;
 
-                ContainerDetail detail = ContainerDetail.builder()
-                        .id(containerId)
-                        .name(name)
-                        .image(image)
-                        .status(state)
-                        .createdAt(createdAt)
-                        .health(health)
-                        .cpuUsage(cpuUsage)
-                        .memoryUsage(memoryUsage)
-                        .restartCount(restartCount)
+                ContainerDetail detail = getContainerDetail(containerId);
+                if (detail == null) continue;
+
+                ContainerOverview overview = ContainerOverview.builder()
+                        .id(detail.getId())
+                        .name(detail.getName())
+                        .image(detail.getImage())
+                        .status(detail.getStatus())
+                        .createdAt(detail.getCreatedAt())
+                        .health(detail.getHealth())
+                        .cpuUsage(detail.getCpuUsage())
+                        .memoryUsage(detail.getMemoryUsage())
+                        .restartCount(detail.getRestartCount())
                         .build();
 
-                allContainers.add(detail);
+                allOverviews.add(overview);
             }
         } catch (IOException e) {
             log.error("컨테이너 정보 수집 중 오류 발생", e);
             throw new RuntimeException("컨테이너 정보 획득 실패", e);
         }
 
-        int total = allContainers.size();
+        int total = allOverviews.size();
         int fromIndex = Math.min((page - 1) * limit, total);
         int toIndex = Math.min(page * limit, total);
-        List<ContainerDetail> pagedList = allContainers.subList(fromIndex, toIndex);
+        List<ContainerOverview> pagedList = allOverviews.subList(fromIndex, toIndex);
 
-        return ContainerInfoResponse.builder()
+        return ContainerListResponse.builder()
                 .total(total)
                 .page(page)
                 .limit(limit)
@@ -93,6 +154,7 @@ public class ContainerService {
             String line;
             while ((line = reader.readLine()) != null) jsonOutput.append(line);
 
+
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode root = objectMapper.readTree(jsonOutput.toString());
             if (root.isArray() && !root.isEmpty()) {
@@ -102,9 +164,55 @@ public class ContainerService {
                 String image = containerNode.path("Config").path("Image").asText();
                 String state = containerNode.path("State").path("Status").asText();
                 String createdAt = containerNode.path("Created").asText();
+                int restartCount = containerNode.path("RestartCount").asInt(0);
 
+                String health = "healthy";
+                JsonNode healthNode = containerNode.path("State").path("Health");
+                if (!healthNode.isMissingNode() && !healthNode.isNull()) {
+                    health = healthNode.path("Status").asText("healthy");
+                }
 
-                String logs = "컨테이너 로그 샘플 데이터...";
+                StatsResult stats = getStatsForContainer(containerId);
+                double cpuUsage = stats.cpuUsage;
+                int memoryUsage = stats.memoryUsage;
+
+                List<PortMapping> ports = new ArrayList<>();
+                JsonNode portsNode = containerNode.path("NetworkSettings").path("Ports");
+                if (portsNode.isObject()) {
+                    portsNode.fieldNames().forEachRemaining(portKey -> {
+                        JsonNode hostBindingArray = portsNode.get(portKey);
+                        int internalPort = Integer.parseInt(portKey.split("/")[0]);
+                        if (hostBindingArray.isArray() && !hostBindingArray.isEmpty()) {
+                            String hostPort = hostBindingArray.get(0).path("HostPort").asText();
+                            int externalPort = Integer.parseInt(hostPort);
+                            ports.add(PortMapping.builder().internal(internalPort).external(externalPort).build());
+                        }
+                    });
+                }
+
+                List<VolumeMapping> volumes = new ArrayList<>();
+                JsonNode mountsNode = containerNode.path("Mounts");
+                if (mountsNode.isArray()) {
+                    for (JsonNode mount : mountsNode) {
+                        String source = mount.path("Source").asText();
+                        String target = mount.path("Destination").asText();
+                        volumes.add(VolumeMapping.builder().source(source).target(target).build());
+                    }
+                }
+
+                List<EnvironmentVar> environment = new ArrayList<>();
+                JsonNode envNode = containerNode.path("Config").path("Env");
+                if (envNode.isArray()) {
+                    for (JsonNode env : envNode) {
+                        String envStr = env.asText();
+                        String[] kv = envStr.split("=", 2);
+                        if (kv.length == 2) {
+                            environment.add(EnvironmentVar.builder().key(kv[0]).value(kv[1]).build());
+                        }
+                    }
+                }
+
+                String logs = containerNode.path("LogPath").asText();
 
                 return ContainerDetail.builder()
                         .id(id)
@@ -112,6 +220,14 @@ public class ContainerService {
                         .image(image)
                         .status(state)
                         .createdAt(createdAt)
+                        .health(health)
+                        .cpuUsage(cpuUsage)
+                        .memoryUsage(memoryUsage)
+                        .restartCount(restartCount)
+                        .ports(ports)
+                        .volumes(volumes)
+                        .environment(environment)
+                        .logs(logs)
                         .build();
             }
             return null;
@@ -120,5 +236,89 @@ public class ContainerService {
             throw new RuntimeException("컨테이너 상세 정보 획득 실패", e);
         }
     }
+
+    public ActionResponse controlContainer(String containerId, String actionStr) {
+        // 지원하는 동작 목록 : START, RESTART, KILL, STOP, DIE, DESTROY, CREATE
+        Action action;
+        try {
+            action = Action.valueOf(actionStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("지원되지 않는 동작: " + actionStr);
+        }
+
+        String dockerCommand = null;
+        String statusResult = null;
+        ProcessBuilder builder;
+
+        switch (action) {
+            case START:
+                dockerCommand = "start";
+                statusResult = "starting";
+                builder = new ProcessBuilder("docker", dockerCommand, containerId);
+                break;
+            case RESTART:
+                dockerCommand = "restart";
+                statusResult = "restarting";
+                builder = new ProcessBuilder("docker", dockerCommand, containerId);
+                break;
+            case KILL:
+                dockerCommand = "kill";
+                statusResult = "killing";
+                builder = new ProcessBuilder("docker", dockerCommand, containerId);
+                break;
+            case STOP:
+                dockerCommand = "stop";
+                statusResult = "stopping";
+                builder = new ProcessBuilder("docker", dockerCommand, containerId);
+                break;
+            case DIE:
+                statusResult = "died";
+                builder = new ProcessBuilder("docker", "kill", "--signal=SIGTERM", containerId);
+                break;
+            case DESTROY:
+                dockerCommand = "rm";
+                statusResult = "destroying";
+                builder = new ProcessBuilder("docker", dockerCommand, containerId);
+                break;
+            case CREATE:
+                throw new UnsupportedOperationException("CREATE 동작은 기존 컨테이너 제어에서는 지원되지 않습니다.");
+            default:
+                throw new IllegalArgumentException("지원되지 않는 동작: " + actionStr);
+        }
+
+        try {
+            Process process = builder.start();
+
+            try (BufferedReader stdOut = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                 BufferedReader stdErr = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                StringBuilder output = new StringBuilder();
+                String line;
+                while ((line = stdOut.readLine()) != null) {
+                    output.append(line);
+                }
+                StringBuilder errOutput = new StringBuilder();
+                while ((line = stdErr.readLine()) != null) {
+                    errOutput.append(line);
+                }
+
+                int exitCode = process.waitFor();
+                if (exitCode == 0) {
+                    String message = "Container " + action.name().toLowerCase() + "ed successfully";
+                    return ActionResponse.builder()
+                            .success(true)
+                            .message(message)
+                            .status(statusResult)
+                            .build();
+                } else {
+                    String errorMsg = errOutput.toString().isEmpty() ? "식별되지 않는 에러" : errOutput.toString();
+                    throw new RuntimeException("Docker 명령어 실행 실패 : " + errorMsg);
+                }
+            }
+        } catch (IOException | InterruptedException ex) {
+            log.error("컨테이너 제어 동작 실행 중 오류", ex);
+            throw new RuntimeException("컨테이너 제어 동작 실행 실패", ex);
+        }
+    }
+
 
 }
