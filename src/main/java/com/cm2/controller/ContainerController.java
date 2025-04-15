@@ -1,7 +1,9 @@
 package com.cm2.controller;
 
+import com.cm2.entity.dto.ActionRequest;
+import com.cm2.entity.dto.ActionResponse;
 import com.cm2.entity.dto.ContainerDetail;
-import com.cm2.entity.dto.ContainerInfoResponse;
+import com.cm2.entity.dto.ContainerListResponse;
 import com.cm2.service.ContainerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,7 +26,7 @@ public class ContainerController {
             @RequestParam(value = "page", defaultValue = "1") int page) {
 
         try {
-            ContainerInfoResponse response = containerService.getContainerInfo(namespace, status, limit, page);
+            ContainerListResponse response = containerService.getContainerInfo(namespace, status, limit, page);
             if (response.getTotal() == 0)
                 return new ResponseEntity<>(HttpStatus.NO_CONTENT);
 
@@ -46,6 +48,20 @@ public class ContainerController {
 
             return new ResponseEntity<>(detail, HttpStatus.OK);
         } catch (IllegalArgumentException ex) {
+            return new ResponseEntity<>(ex.getMessage(), HttpStatus.BAD_REQUEST);
+        } catch (Exception ex) {
+            return new ResponseEntity<>(ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // 컨테이너 제어 API
+    @PostMapping("/{containerId}/action")
+    public ResponseEntity<?> performAction(@PathVariable String containerId,
+                                           @RequestBody ActionRequest actionRequest) {
+        try {
+            ActionResponse response = containerService.controlContainer(containerId, actionRequest.getAction());
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (IllegalArgumentException | UnsupportedOperationException ex) {
             return new ResponseEntity<>(ex.getMessage(), HttpStatus.BAD_REQUEST);
         } catch (Exception ex) {
             return new ResponseEntity<>(ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
