@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.List;
 
 @Getter
+@NoArgsConstructor
 public class ContainerDetail {
     private String id;
     private String name;
