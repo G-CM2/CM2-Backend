@@ -1,7 +1,7 @@
 package com.cm2.controller;
 
+import com.cm2.collector.DockerEventCollector;
 import com.cm2.entity.ContainerEvent;
-import com.cm2.service.docker.DockerEventService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,7 +16,7 @@ import java.util.List;
 @RequestMapping("/timeline")
 public class TimelineController {
 
-    private final DockerEventService dockerEventService;
+    private final DockerEventCollector dockerEventService;
 
     @GetMapping("/{containerId}")
     public ResponseEntity<List<ContainerEvent>> getTimeline(
