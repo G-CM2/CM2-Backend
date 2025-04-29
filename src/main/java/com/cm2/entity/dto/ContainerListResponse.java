@@ -8,14 +8,14 @@ import java.util.List;
 
 @Getter
 @NoArgsConstructor
-public class ContainerInfoResponse {
+public class ContainerListResponse {
     private int total;
     private int page;
     private int limit;
-    private List<ContainerDetail> containers;
+    private List<ContainerOverview> containers;
 
     @Builder
-    public ContainerInfoResponse(int total, int page, int limit, List<ContainerDetail> containers) {
+    public ContainerListResponse(int total, int page, int limit, List<ContainerOverview> containers) {
         this.total = total;
         this.page = page;
         this.limit = limit;
