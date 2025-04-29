@@ -1,4 +1,4 @@
-package com.cm2.service.docker;
+package com.cm2.collector;
 
 import com.cm2.entity.Action;
 import com.cm2.entity.ContainerEvent;
@@ -7,7 +7,7 @@ import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -16,15 +16,14 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-@Service
+@Component
 @Slf4j
 @RequiredArgsConstructor
-public class DockerEventService implements Runnable {
+public class DockerEventCollector implements Runnable {
 
     private final ThreadPoolTaskExecutor taskExecutor;
     private final AtomicReference<Process> dockerProcessRef = new AtomicReference<>();
     private final Map<String, List<ContainerEvent>> logMap = new HashMap<>();
-    private final DockerLogFileService dockerLogFileService;
 
     public List<ContainerEvent> getContainerLogList(String containerId) {
         return logMap.getOrDefault(containerId, null);
@@ -67,7 +66,7 @@ public class DockerEventService implements Runnable {
     public void run() {
         log.info("Docker 이벤트 모니터링 시작");
         try {
-            ProcessBuilder builder = new ProcessBuilder("docker.exe", "events", "--format", "{{.Time}},{{.Type}},{{.Action}},{{.Actor.ID}}");
+            ProcessBuilder builder = new ProcessBuilder("docker", "events", "--format", "{{.Time}},{{.Type}},{{.Action}},{{.Actor.ID}}");
 
             Process dockerProcess = builder.start();
             dockerProcessRef.set(dockerProcess); // 프로세스 참조 저장

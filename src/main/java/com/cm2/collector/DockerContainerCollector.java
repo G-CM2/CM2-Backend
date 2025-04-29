@@ -1,11 +1,12 @@
-package com.cm2.service;
+package com.cm2.collector;
 
+import com.cm2.collector.dto.StatsResult;
 import com.cm2.entity.Action;
 import com.cm2.entity.dto.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -13,18 +14,9 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
-@Service
+@Component
 @Slf4j
-public class ContainerService {
-
-    private static class StatsResult {
-        public double cpuUsage;
-        public int memoryUsage;
-        public StatsResult(double cpuUsage, int memoryUsage) {
-            this.cpuUsage = cpuUsage;
-            this.memoryUsage = memoryUsage;
-        }
-    }
+public class DockerContainerCollector {
 
     private double parseCpuUsage(String cpuStr) {
         if (cpuStr == null) return 0.0;
@@ -39,14 +31,15 @@ public class ContainerService {
     private int parseMemoryUsage(String memStr) {
         if (memStr == null) return 0;
         memStr = memStr.toUpperCase().trim();
-        double value = 0.0;
-        if (memStr.endsWith("GIB")) {
+
+        double value;
+        if (memStr.endsWith("GIB"))
             value = Double.parseDouble(memStr.replace("GIB", "").trim()) * 1024;
-        } else if (memStr.endsWith("MIB")) {
+        else if (memStr.endsWith("MIB"))
             value = Double.parseDouble(memStr.replace("MIB", "").trim());
-        } else if (memStr.endsWith("KIB")) {
+        else if (memStr.endsWith("KIB"))
             value = Double.parseDouble(memStr.replace("KIB", "").trim()) / 1024;
-        } else {
+        else {
             try {
                 value = Double.parseDouble(memStr);
             } catch (Exception e) {
@@ -62,7 +55,8 @@ public class ContainerService {
             Process process = pb.start();
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 
-            String header = reader.readLine();
+            //헤더 삭제용
+            reader.readLine();
             String dataLine = reader.readLine();
             process.waitFor();
 
@@ -109,15 +103,15 @@ public class ContainerService {
                 if (detail == null) continue;
 
                 ContainerOverview overview = ContainerOverview.builder()
-                        .id(detail.getId())
-                        .name(detail.getName())
-                        .image(detail.getImage())
-                        .status(detail.getStatus())
-                        .createdAt(detail.getCreatedAt())
-                        .health(detail.getHealth())
-                        .cpuUsage(detail.getCpuUsage())
-                        .memoryUsage(detail.getMemoryUsage())
-                        .restartCount(detail.getRestartCount())
+                        .id(detail.id())
+                        .name(detail.name())
+                        .image(detail.image())
+                        .status(detail.status())
+                        .createdAt(detail.createdAt())
+                        .health(detail.health())
+                        .cpuUsage(detail.cpuUsage())
+                        .memoryUsage(detail.memoryUsage())
+                        .restartCount(detail.restartCount())
                         .build();
 
                 allOverviews.add(overview);
@@ -209,7 +203,7 @@ public class ContainerService {
                     }
                 }
 
-                String logs = containerNode.path("LogPath").asText();
+                String log = containerNode.path("LogPath").asText();
 
                 return ContainerDetail.builder()
                         .id(id)
@@ -224,7 +218,7 @@ public class ContainerService {
                         .ports(ports)
                         .volumes(volumes)
                         .environment(environment)
-                        .logs(logs)
+                        .log(log)
                         .build();
             }
             return null;
@@ -243,45 +237,41 @@ public class ContainerService {
             throw new IllegalArgumentException("지원되지 않는 동작: " + actionStr);
         }
 
-        String dockerCommand = null;
-        String statusResult = null;
-        ProcessBuilder builder;
-
-        switch (action) {
-            case START:
+        String dockerCommand;
+        String statusResult;
+        ProcessBuilder builder = switch (action) {
+            case START -> {
                 dockerCommand = "start";
                 statusResult = "starting";
-                builder = new ProcessBuilder("docker", dockerCommand, containerId);
-                break;
-            case RESTART:
+                yield new ProcessBuilder("docker", dockerCommand, containerId);
+            }
+            case RESTART -> {
                 dockerCommand = "restart";
                 statusResult = "restarting";
-                builder = new ProcessBuilder("docker", dockerCommand, containerId);
-                break;
-            case KILL:
+                yield new ProcessBuilder("docker", dockerCommand, containerId);
+            }
+            case KILL -> {
                 dockerCommand = "kill";
                 statusResult = "killing";
-                builder = new ProcessBuilder("docker", dockerCommand, containerId);
-                break;
-            case STOP:
+                yield new ProcessBuilder("docker", dockerCommand, containerId);
+            }
+            case STOP -> {
                 dockerCommand = "stop";
                 statusResult = "stopping";
-                builder = new ProcessBuilder("docker", dockerCommand, containerId);
-                break;
-            case DIE:
+                yield new ProcessBuilder("docker", dockerCommand, containerId);
+            }
+            case DIE -> {
                 statusResult = "died";
-                builder = new ProcessBuilder("docker", "kill", "--signal=SIGTERM", containerId);
-                break;
-            case DESTROY:
+                yield new ProcessBuilder("docker", "kill", "--signal=SIGTERM", containerId);
+            }
+            case DESTROY -> {
                 dockerCommand = "rm";
                 statusResult = "destroying";
-                builder = new ProcessBuilder("docker", dockerCommand, containerId);
-                break;
-            case CREATE:
-                throw new UnsupportedOperationException("CREATE 동작은 기존 컨테이너 제어에서는 지원되지 않습니다.");
-            default:
-                throw new IllegalArgumentException("지원되지 않는 동작: " + actionStr);
-        }
+                yield new ProcessBuilder("docker", dockerCommand, containerId);
+            }
+            case CREATE -> throw new UnsupportedOperationException("CREATE 동작은 기존 컨테이너 제어에서는 지원되지 않습니다.");
+            default -> throw new IllegalArgumentException("지원되지 않는 동작: " + actionStr);
+        };
 
         try {
             Process process = builder.start();
@@ -290,13 +280,10 @@ public class ContainerService {
                  BufferedReader stdErr = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
                 StringBuilder output = new StringBuilder();
                 String line;
-                while ((line = stdOut.readLine()) != null) {
-                    output.append(line);
-                }
+                while ((line = stdOut.readLine()) != null) output.append(line);
+
                 StringBuilder errOutput = new StringBuilder();
-                while ((line = stdErr.readLine()) != null) {
-                    errOutput.append(line);
-                }
+                while ((line = stdErr.readLine()) != null) errOutput.append(line);
 
                 int exitCode = process.waitFor();
                 if (exitCode == 0) {
@@ -316,6 +303,5 @@ public class ContainerService {
             throw new RuntimeException("컨테이너 제어 동작 실행 실패", ex);
         }
     }
-
 
 }
