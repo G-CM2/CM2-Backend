@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: CM2-Backend
+
+server:
+  port: 8080
