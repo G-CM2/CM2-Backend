@@ -14,64 +14,12 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.cm2.util.UsageParser.parseCpuUsage;
+import static com.cm2.util.UsageParser.parseMemoryUsage;
+
 @Component
 @Slf4j
 public class DockerContainerCollector {
-
-    private double parseCpuUsage(String cpuStr) {
-        if (cpuStr == null) return 0.0;
-        cpuStr = cpuStr.replace("%", "").trim();
-        try {
-            return Double.parseDouble(cpuStr);
-        } catch (NumberFormatException e) {
-            return 0.0;
-        }
-    }
-
-    private int parseMemoryUsage(String memStr) {
-        if (memStr == null) return 0;
-        memStr = memStr.toUpperCase().trim();
-
-        double value;
-        if (memStr.endsWith("GIB"))
-            value = Double.parseDouble(memStr.replace("GIB", "").trim()) * 1024;
-        else if (memStr.endsWith("MIB"))
-            value = Double.parseDouble(memStr.replace("MIB", "").trim());
-        else if (memStr.endsWith("KIB"))
-            value = Double.parseDouble(memStr.replace("KIB", "").trim()) / 1024;
-        else {
-            try {
-                value = Double.parseDouble(memStr);
-            } catch (Exception e) {
-                value = 0.0;
-            }
-        }
-        return (int) Math.round(value);
-    }
-
-    private StatsResult getStatsForContainer(String containerId) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("docker", "stats", "--no-stream", containerId);
-            Process process = pb.start();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-
-            //헤더 삭제용
-            reader.readLine();
-            String dataLine = reader.readLine();
-            process.waitFor();
-
-            if (dataLine != null && !dataLine.isEmpty()) {
-                String[] tokens = dataLine.split("\\s+");
-
-                double cpuUsage = parseCpuUsage(tokens[2]);
-                int memoryUsage = parseMemoryUsage(tokens[3]);
-                return new StatsResult(cpuUsage, memoryUsage);
-            }
-        } catch (IOException | InterruptedException e) {
-            log.error("docker stats 명령어 실행 중 오류", e);
-        }
-        return new StatsResult(0.0, 0);
-    }
 
     // 모든 컨테이너 목록 조회 API용
     public ContainerListResponse getContainerInfo(String namespace, String status, int limit, int page) {
@@ -302,6 +250,30 @@ public class DockerContainerCollector {
             log.error("컨테이너 제어 동작 실행 중 오류", ex);
             throw new RuntimeException("컨테이너 제어 동작 실행 실패", ex);
         }
+    }
+
+    protected StatsResult getStatsForContainer(String containerId) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("docker", "stats", "--no-stream", containerId);
+            Process process = pb.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+
+            //헤더 삭제용
+            reader.readLine();
+            String dataLine = reader.readLine();
+            process.waitFor();
+
+            if (dataLine != null && !dataLine.isEmpty()) {
+                String[] tokens = dataLine.split("\\s+");
+
+                double cpuUsage = parseCpuUsage(tokens[2]);
+                int memoryUsage = parseMemoryUsage(tokens[3]);
+                return new StatsResult(cpuUsage, memoryUsage);
+            }
+        } catch (IOException | InterruptedException e) {
+            log.error("docker stats 명령어 실행 중 오류", e);
+        }
+        return new StatsResult(0.0, 0);
     }
 
 }
