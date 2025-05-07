@@ -56,10 +56,11 @@ public class ContainerController {
 
     // 컨테이너 제어 API
     @PostMapping("/{containerId}/action")
-    public ResponseEntity<?> performAction(@PathVariable String containerId,
-                                           @RequestBody ActionRequest actionRequest) {
+    public ResponseEntity<?> performAction(
+            @PathVariable String containerId,
+            @RequestBody ActionRequest req) {
         try {
-            ActionResponse response = containerCollector.controlContainer(containerId, actionRequest.action());
+            ActionResponse response = containerCollector.controlContainer(containerId, req);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException | UnsupportedOperationException ex) {
             return ResponseEntity.badRequest().body(ex.getMessage());

@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static com.cm2.util.UsageParser.parseCpuUsage;
 import static com.cm2.util.UsageParser.parseMemoryUsage;
@@ -176,49 +177,58 @@ public class DockerContainerCollector {
         }
     }
 
-    public ActionResponse controlContainer(String containerId, String actionStr) {
-        // 지원하는 동작 목록 : START, RESTART, KILL, STOP, DIE, DESTROY, CREATE
+    public ActionResponse controlContainer(String containerId, ActionRequest req) {
+        // 지원하는 동작 목록 : RUN, START, RESTART, KILL, STOP, DIE, DESTROY, CREATE
         Action action;
         try {
-            action = Action.valueOf(actionStr.toUpperCase());
+            action = Action.valueOf(req.action().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("지원되지 않는 동작: " + actionStr);
+            throw new IllegalArgumentException("지원되지 않는 동작: " + req.action());
         }
 
-        String dockerCommand;
         String statusResult;
         ProcessBuilder builder = switch (action) {
+            case CREATE -> {
+                String image = Optional.ofNullable(req.image())
+                        .filter(s -> !s.isBlank())
+                        .orElse("ubuntu");
+                String network = Optional.ofNullable(req.networkMode()).orElse("host");
+                List<String> cmd = List.of(
+                        "docker", "run", "-dit",
+                        "--network", network,
+                        "--memory-swappiness=0",
+                        "--tmpfs", "/tmp:rw",
+                        "--name", containerId,
+                        image
+                );
+                statusResult = "running";
+                yield new ProcessBuilder(cmd);
+            }
             case START -> {
-                dockerCommand = "start";
                 statusResult = "starting";
-                yield new ProcessBuilder("docker", dockerCommand, containerId);
+                yield new ProcessBuilder("docker", "start", containerId);
             }
             case RESTART -> {
-                dockerCommand = "restart";
                 statusResult = "restarting";
-                yield new ProcessBuilder("docker", dockerCommand, containerId);
+                yield new ProcessBuilder("docker", "restart", containerId);
             }
             case KILL -> {
-                dockerCommand = "kill";
                 statusResult = "killing";
-                yield new ProcessBuilder("docker", dockerCommand, containerId);
+                yield new ProcessBuilder("docker", "kill", containerId);
             }
             case STOP -> {
-                dockerCommand = "stop";
                 statusResult = "stopping";
-                yield new ProcessBuilder("docker", dockerCommand, containerId);
+                yield new ProcessBuilder("docker", "stop", containerId);
             }
             case DIE -> {
                 statusResult = "died";
                 yield new ProcessBuilder("docker", "kill", "--signal=SIGTERM", containerId);
             }
             case DESTROY -> {
-                dockerCommand = "rm";
                 statusResult = "destroying";
-                yield new ProcessBuilder("docker", dockerCommand, containerId);
+                yield new ProcessBuilder("docker", "rm", containerId);
             }
-            case CREATE -> throw new UnsupportedOperationException("CREATE 동작은 기존 컨테이너 제어에서는 지원되지 않습니다.");
-            default -> throw new IllegalArgumentException("지원되지 않는 동작: " + actionStr);
+            default -> throw new IllegalArgumentException("지원되지 않는 동작: " + req.action());
         };
 
         try {
