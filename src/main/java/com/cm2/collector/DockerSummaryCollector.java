@@ -64,7 +64,7 @@ public class DockerSummaryCollector {
             totalMemory += stats.memoryUsage;
         }
 
-        double diskUsage = 62.1;
+        double totalDiskUsage = calculateTotalDiskUsage();
 
         StatusSummary status = StatusSummary.builder()
                 .description("정상 작동 중")
@@ -81,7 +81,7 @@ public class DockerSummaryCollector {
         ResourceSummary resources = ResourceSummary.builder()
                 .cpuUsage(totalCpu)
                 .memoryUsage(totalMemory)
-                .diskUsage(diskUsage)
+                .diskUsage(totalDiskUsage)
                 .build();
 
         String updatedAt = ZonedDateTime.now().toString();
@@ -92,6 +92,46 @@ public class DockerSummaryCollector {
                 .resources(resources)
                 .updatedAt(updatedAt)
                 .build();
+    }
+
+    private double calculateTotalDiskUsage() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("docker", "system", "df", "--format", "{{.Type}}\t{{.Size}}\t{{.Reclaimable}}");
+            Process process = pb.start();
+
+            double totalSize = 0;
+            double usedSize = 0;
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] parts = line.split("\t");
+                    if (parts.length >= 3) {
+                        String size = parts[1].replaceAll("[^0-9.]", "");
+                        String reclaimable = parts[2].replaceAll("[^0-9.]", "");
+
+                        if (!size.isEmpty() && !reclaimable.isEmpty()) {
+                            double sizeValue = Double.parseDouble(size);
+                            double reclaimableValue = Double.parseDouble(reclaimable);
+                            totalSize += sizeValue;
+                            usedSize += (sizeValue - reclaimableValue);
+                        }
+                    }
+                }
+            }
+
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                log.error("Docker system df 명령어 실행 실패. Exit code: {}", exitCode);
+                return 0.0;
+            }
+
+            return totalSize > 0 ? (usedSize / totalSize) * 100 : 0.0;
+
+        } catch (IOException | InterruptedException e) {
+            log.error("디스크 사용량 계산 중 오류 발생", e);
+            return 0.0;
+        }
     }
 
 
