@@ -25,7 +25,10 @@ jobs:
           if [ -z "${{ steps.get_latest_tag.outputs.latest_tag }}" ]; then
             new_version="v1.0.0"
           else
-            IFS='.' read -r major minor patch <<<"${{ steps.get_latest_tag.outputs.latest_tag/v/}}"
+            # v 접두사 제거
+            latest="${{ steps.get_latest_tag.outputs.latest_tag }}"
+            version="${latest#v}"
+            IFS='.' read -r major minor patch <<<"$version"
             patch=$((patch+1))
             new_version="v$major.$minor.$patch"
           fi
