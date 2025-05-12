@@ -16,13 +16,13 @@ import java.util.List;
 @RequestMapping("/timeline")
 public class TimelineController {
 
-    private final DockerEventCollector dockerEventService;
+    private final DockerEventCollector dockerEventCollector;
 
     @GetMapping("/{containerId}")
     public ResponseEntity<List<ContainerEvent>> getTimeline(
             @PathVariable String containerId
     ) {
-        List<ContainerEvent> resultList = dockerEventService.getContainerLogList(containerId);
+        List<ContainerEvent> resultList = dockerEventCollector.getContainerLogList(containerId);
         return resultList == null ?
                 ResponseEntity.badRequest().body(null) :
                 ResponseEntity.ok(resultList);
