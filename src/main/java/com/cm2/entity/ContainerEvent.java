@@ -1,5 +1,5 @@
 package com.cm2.entity;
 
-public record ContainerEvent(long timeInMillis, Action action) {
+public record ContainerEvent(String containerId, Action action, long timeInMillis) {
 
 }

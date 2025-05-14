@@ -2,6 +2,7 @@ package com.cm2.collector;
 
 import com.cm2.entity.Action;
 import com.cm2.entity.ContainerEvent;
+import com.cm2.repository.DockerEventRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +15,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.time.LocalDateTime;
-import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
@@ -24,12 +24,9 @@ public class DockerEventCollector implements Runnable {
 
     private final ApplicationEventPublisher eventPublisher;
     private final ThreadPoolTaskExecutor taskExecutor;
-    private final AtomicReference<Process> dockerProcessRef = new AtomicReference<>();
-    private final Map<String, List<ContainerEvent>> logMap = new HashMap<>();
+    private final DockerEventRepository eventRepository;
 
-    public List<ContainerEvent> getContainerLogList(String containerId) {
-        return logMap.getOrDefault(containerId, null);
-    }
+    private final AtomicReference<Process> dockerProcessRef = new AtomicReference<>();
 
     @PostConstruct
     public void init() {
@@ -82,7 +79,7 @@ public class DockerEventCollector implements Runnable {
 
                     String time = split[0];
                     String type = split[1];
-                    String action = split[2];
+                    String action = split[2].toUpperCase();
                     String containerId = split[3];
 
                     //컨테이너 로그만 수집
@@ -90,26 +87,25 @@ public class DockerEventCollector implements Runnable {
 
                     log.info(line);
 
-                    LocalDateTime now = LocalDateTime.now();
-                    if (now.getDayOfMonth() != day) {
-                        day = now.getDayOfMonth();
-                        logMap.clear();
+                    //하루마다 초기화
+                    int today = LocalDateTime.now().getDayOfMonth();
+                    if (today != day) {
+                        day = today;
+                        eventRepository.clearAll();
                         log.info("메모리 로그 초기화");
                     }
 
                     //이벤트 생성
-                    ContainerEvent event
-                            = new ContainerEvent(Long.parseLong(time), Action.valueOf(action.toUpperCase()));
+                    ContainerEvent event = new ContainerEvent(containerId, Action.valueOf(action), Long.parseLong(time));
 
                     //이벤트 전파
                     eventPublisher.publishEvent(event);
 
                     //없으면 리스트 추가
-                    if (!logMap.containsKey(containerId))
-                        logMap.put(containerId, new ArrayList<>());
+                    eventRepository.createContainerIfNotExists(containerId);
 
                     //로그 생성
-                    logMap.get(containerId).add(event);
+                    eventRepository.save(containerId, event);
                 }
             }
         } catch (IOException e) {
@@ -123,4 +119,3 @@ public class DockerEventCollector implements Runnable {
         }
     }
 }
-
