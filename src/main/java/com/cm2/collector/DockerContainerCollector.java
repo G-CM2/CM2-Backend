@@ -178,7 +178,7 @@ public class DockerContainerCollector {
     }
 
     public ActionResponse controlContainer(String containerId, ActionRequest req) {
-        // 지원하는 동작 목록 : RUN, START, RESTART, KILL, STOP, DIE, DESTROY, CREATE
+        // 지원하는 동작 목록: RUN, START, RESTART, KILL, STOP, DIE, DESTROY, CREATE
         Action action;
         try {
             action = Action.valueOf(req.action().toUpperCase());
@@ -232,14 +232,9 @@ public class DockerContainerCollector {
         };
 
         try {
+            String line;
             Process process = builder.start();
-
-            try (BufferedReader stdOut = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                 BufferedReader stdErr = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-                StringBuilder output = new StringBuilder();
-                String line;
-                while ((line = stdOut.readLine()) != null) output.append(line);
-
+            try (BufferedReader stdErr = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
                 StringBuilder errOutput = new StringBuilder();
                 while ((line = stdErr.readLine()) != null) errOutput.append(line);
 
