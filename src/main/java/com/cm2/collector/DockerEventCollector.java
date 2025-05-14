@@ -6,6 +6,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
@@ -16,11 +17,12 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-@Component
 @Slf4j
+@Component
 @RequiredArgsConstructor
 public class DockerEventCollector implements Runnable {
 
+    private final ApplicationEventPublisher eventPublisher;
     private final ThreadPoolTaskExecutor taskExecutor;
     private final AtomicReference<Process> dockerProcessRef = new AtomicReference<>();
     private final Map<String, List<ContainerEvent>> logMap = new HashMap<>();
@@ -95,8 +97,13 @@ public class DockerEventCollector implements Runnable {
                         log.info("메모리 로그 초기화");
                     }
 
+                    //이벤트 생성
+                    ContainerEvent event
+                            = new ContainerEvent(Long.parseLong(time), Action.valueOf(action.toUpperCase()));
 
-                    ContainerEvent event = new ContainerEvent(Long.parseLong(time), Action.valueOf(action.toUpperCase()));
+                    //이벤트 전파
+                    eventPublisher.publishEvent(event);
+
                     //없으면 리스트 추가
                     if (!logMap.containsKey(containerId))
                         logMap.put(containerId, new ArrayList<>());
@@ -116,3 +123,4 @@ public class DockerEventCollector implements Runnable {
         }
     }
 }
+
