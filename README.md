@@ -6,6 +6,7 @@ Docker 컨테이너 모니터링 및 관리를 위한 웹 API 서버입니다.
 
 - **Spring boot**: 서버 구축
 - **Lombok**: Annotation기반 Syntax sugar용
+- **Gradle**: 의존성 관리 및 빌드 도구
 - **Github Actions**: 자동 Release 버전 배포
 
 ## 주요 기능
