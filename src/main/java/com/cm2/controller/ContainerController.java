@@ -17,55 +17,27 @@ public class ContainerController {
 
     private final DockerContainerCollector containerCollector;
 
-    // 모든 컨테이너 목록 조회 API
+    // 컨테이너 리스트 조회
     @GetMapping
-    public ResponseEntity<?> getAllContainers(
-            @RequestParam(value = "namespace", required = false) String namespace,
-            @RequestParam(value = "status", required = false) String status,
-            @RequestParam(value = "limit", defaultValue = "20") int limit,
-            @RequestParam(value = "page", defaultValue = "1") int page) {
-
-        try {
-            ContainerListResponse response = containerCollector.getContainerInfo(namespace, status, limit, page);
-            if (response.total() == 0)
-                return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-
-            return new ResponseEntity<>(response, HttpStatus.OK);
-        } catch (IllegalArgumentException | UnsupportedOperationException ex) {
-            return ResponseEntity.badRequest().body(ex.getMessage());
-        } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ex.getMessage());
-        }
+    public ResponseEntity<ContainerListResponse> listContainers(
+            @RequestParam(value="namespace", required=false) String namespace,
+            @RequestParam(value="status",    required=false) String status,
+            @RequestParam(value="limit",     defaultValue="20") int limit,
+            @RequestParam(value="page",      defaultValue="1")  int page
+    ) {
+        var list = containerCollector.getContainerInfo(namespace, status, limit, page);
+        return list.total() == 0
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.ok(list);
     }
 
-    // 특정 컨테이너의 상세 정보 조회 API
-    @GetMapping("/{containerId}")
-    public ResponseEntity<?> getContainerDetail(@PathVariable String containerId) {
-        try {
-            ContainerDetail detail = containerCollector.getContainerDetail(containerId);
-            if (detail == null)
-                return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-
-            return new ResponseEntity<>(detail, HttpStatus.OK);
-        } catch (IllegalArgumentException | UnsupportedOperationException ex) {
-            return ResponseEntity.badRequest().body(ex.getMessage());
-        } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ex.getMessage());
-        }
+    // 특정 컨테이너 상세 조회
+    @GetMapping("/{id}")
+    public ResponseEntity<ContainerDetail> getContainerDetail(@PathVariable("id") String id) {
+        var detail = containerCollector.getContainerDetail(id);
+        return detail == null
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.ok(detail);
     }
 
-    // 컨테이너 제어 API
-    @PostMapping("/{containerId}/action")
-    public ResponseEntity<?> performAction(
-            @PathVariable String containerId,
-            @RequestBody ActionRequest req) {
-        try {
-            ActionResponse response = containerCollector.controlContainer(containerId, req);
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException | UnsupportedOperationException ex) {
-            return ResponseEntity.badRequest().body(ex.getMessage());
-        } catch (Exception ex) {
-            return ResponseEntity.internalServerError().body(ex.getMessage());
-        }
-    }
 }
