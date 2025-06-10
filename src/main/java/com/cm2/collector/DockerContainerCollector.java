@@ -5,6 +5,7 @@ import com.cm2.entity.Action;
 import com.cm2.entity.dto.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -20,53 +21,63 @@ import static com.cm2.util.UsageParser.parseMemoryUsage;
 
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class DockerContainerCollector {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // 모든 컨테이너 목록 조회 API용
     public ContainerListResponse getContainerInfo(String namespace, String status, int limit, int page) {
         List<ContainerOverview> allOverviews = new ArrayList<>();
         try {
             // docker ps -a 명령어 실행
-            ProcessBuilder builder = new ProcessBuilder("docker", "ps", "-a", "--no-trunc");
+            ProcessBuilder builder = new ProcessBuilder(
+                    "docker", "ps", "-a",
+                    "--format", "{{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}"
+            );
             Process process = builder.start();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            //CONTAINER ID...STATUS, PORTS, NAMES 제거용
-            reader.readLine();
 
-            while ((line = reader.readLine()) != null) {
-                String[] tokens = line.split("\\s+");
-                if (tokens.length < 5) continue;  // 파싱 에러 방지
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] tokens = line.split("\t", 4);
+                    if (tokens.length < 4) continue;
 
-                String containerId = tokens[0];
-                String image = tokens[1];
-                String state = tokens[2];
-                String name = tokens[tokens.length - 1];
+                    String containerId = tokens[0];
+                    String image = tokens[1];
+                    String state = tokens[2];
+                    String name = tokens[3];
 
-                // 필터링: 네임스페이스 필터 (컨테이너 이름에 namespace 문자열 포함 여부)
-                if (namespace != null && !namespace.isEmpty() && !name.contains(namespace)) continue;
-                // 필터링: status 필터 (대소문자 구분 없이)
-                if (status != null && !status.isEmpty() && !state.equalsIgnoreCase(status)) continue;
+                    // 필터링: 네임스페이스 필터 (컨테이너 이름에 namespace 문자열 포함 여부)
+                    if (namespace != null && !namespace.isEmpty() && !name.contains(namespace)) continue;
+                    // 필터링: status 필터 (대소문자 구분 없이)
+                    if (status != null && !status.isEmpty() && !state.equalsIgnoreCase(status)) continue;
 
-                ContainerDetail detail = getContainerDetail(containerId);
-                if (detail == null) continue;
+                    ContainerDetail detail = getContainerDetail(containerId);
+                    if (detail == null) continue;
 
-                ContainerOverview overview = ContainerOverview.builder()
-                        .id(detail.id())
-                        .name(detail.name())
-                        .image(detail.image())
-                        .status(detail.status())
-                        .createdAt(detail.createdAt())
-                        .health(detail.health())
-                        .cpuUsage(detail.cpuUsage())
-                        .memoryUsage(detail.memoryUsage())
-                        .restartCount(detail.restartCount())
-                        .build();
+                    ContainerOverview overview = ContainerOverview.builder()
+                            .id(detail.id())
+                            .name(detail.name())
+                            .image(detail.image())
+                            .status(detail.status())
+                            .createdAt(detail.createdAt())
+                            .health(detail.health())
+                            .cpuUsage(detail.cpuUsage())
+                            .memoryUsage(detail.memoryUsage())
+                            .restartCount(detail.restartCount())
+                            .build();
 
-                allOverviews.add(overview);
+                    allOverviews.add(overview);
+                }
             }
-        } catch (IOException e) {
+            int exit = process.waitFor();
+            if (exit != 0) {
+                log.warn("docker ps 명령 비정상 종료 : exit code = {}", exit);
+            }
+        } catch (IOException | InterruptedException e) {
             log.error("컨테이너 정보 수집 중 오류 발생", e);
+            Thread.currentThread().interrupt();
             throw new RuntimeException("컨테이너 정보 획득 실패", e);
         }
 
