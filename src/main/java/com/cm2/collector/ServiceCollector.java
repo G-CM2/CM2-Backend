@@ -1,0 +1,146 @@
+package com.cm2.collector;
+
+import com.cm2.entity.dto.ScaleRequest;
+import com.cm2.entity.dto.ServiceListResponse;
+import com.cm2.entity.dto.ServiceOverview;
+import com.cm2.entity.dto.ServiceRequest;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class ServiceCollector {
+    // 1) 서비스 목록 조회
+    public ServiceListResponse listServices() {
+        List<ServiceOverview> list = new ArrayList<>();
+        try {
+            ProcessBuilder builder = new ProcessBuilder(
+                    "docker", "service", "ls", "--format",
+                    "{{.ID}}\t{{.Name}}\t{{.Mode}}\t{{.Replicas}}\t{{.Image}}"
+            );
+            Process process = builder.start();
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] tokens = line.split("\t", 5);
+                    if (tokens.length < 5) continue;
+                    String[] reps = tokens[3].split("/", 2);
+                    int running = Integer.parseInt(reps[0]);
+                    int desired = Integer.parseInt(reps[1]);
+                    list.add(ServiceOverview.builder()
+                            .id(tokens[0])
+                            .name(tokens[1])
+                            .mode(tokens[2])
+                            .replicasDesired(desired)
+                            .replicasRunning(running)
+                            .image(tokens[4])
+                            .build());
+                }
+            }
+
+            int exit = process.waitFor();
+            if (exit != 0) {
+                log.warn("docker service ls 명령 비정상 종료: exit code={}", exit);
+            }
+        } catch (Exception e) {
+            log.error("Service list 조회 실패", e);
+            throw new RuntimeException("Service list 조회 실패", e);
+        }
+
+        return ServiceListResponse.builder()
+                .total(list.size())
+                .services(list)
+                .build();
+    }
+
+    private void ensureSwarmInitialized() throws IOException, InterruptedException {
+        ProcessBuilder builder = new ProcessBuilder(
+                "docker", "info", "--format", "{{.Swarm.LocalNodeState}}"
+        );
+        Process process = builder.start();
+        process.waitFor();
+        String state = new BufferedReader(new InputStreamReader(process.getInputStream()))
+                .readLine();
+        if (!"active".equalsIgnoreCase(state)) {
+            new ProcessBuilder("docker", "swarm", "init").start().waitFor();
+            log.info("Swarm mode automatically initialized");
+        }
+    }
+
+    // 2) 서비스 생성
+    public String createService(ServiceRequest req) {
+        try {
+            // Swarm 초기화 체크
+            ensureSwarmInitialized();
+
+            // 실제 서비스 생성
+            ProcessBuilder builder = new ProcessBuilder(
+                    "docker", "service", "create",
+                    "--name", req.name(),
+                    "--replicas", String.valueOf(req.replicas()),
+                    req.image()
+            );
+            Process process = builder.start();
+
+            // stderr 먼저 확인
+            try (BufferedReader err = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                String errLine = err.readLine();
+                if (errLine != null && !errLine.isBlank()) {
+                    throw new RuntimeException("Service 생성 실패: " + errLine);
+                }
+            }
+
+            // stdout에서 ID 읽기
+            try (BufferedReader out = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String id = out.readLine();
+                if (id == null || id.isBlank()) {
+                    throw new RuntimeException("Service 생성 실패: ID를 찾을 수 없습니다.");
+                }
+                return id;
+            }
+        } catch (IOException | InterruptedException e) {
+            log.error("Service 생성 중 오류", e);
+            throw new RuntimeException("Service 생성 실패: " + e.getMessage(), e);
+        }
+    }
+
+    // 3) 서비스 삭제
+    public void removeService(String serviceId) {
+        try {
+            new ProcessBuilder("docker", "service", "rm", serviceId).start().waitFor();
+        } catch (Exception e) {
+            log.error("Service 삭제 실패", e);
+            throw new RuntimeException("Service 삭제 실패: " + e.getMessage(), e);
+        }
+    }
+
+    // 4) 서비스 스케일링
+    public void scaleService(String serviceId, ScaleRequest req) {
+        try {
+            ProcessBuilder builder = new ProcessBuilder(
+                    "docker", "service", "scale",
+                    serviceId + "=" + req.replicas()
+            );
+            Process process = builder.start();
+
+            // 프로세스 종료 대기 및 exit code 확인
+            int exit = process.waitFor();
+            if (exit != 0) {
+                log.error("Service 스케일링 실패: exit code={}", exit);
+                throw new RuntimeException("Service 스케일링 실패: exit code=" + exit);
+            }
+        } catch (Exception e) {
+            log.error("Service 스케일링 실패", e);
+            throw new RuntimeException("Service 스케일링 실패", e);
+        }
+    }
+}
