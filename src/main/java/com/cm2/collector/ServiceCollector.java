@@ -1,9 +1,8 @@
 package com.cm2.collector;
 
-import com.cm2.entity.dto.ScaleRequest;
-import com.cm2.entity.dto.ServiceListResponse;
-import com.cm2.entity.dto.ServiceOverview;
-import com.cm2.entity.dto.ServiceRequest;
+import com.cm2.entity.dto.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -18,6 +17,8 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class ServiceCollector {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     // 1) 서비스 목록 조회
     public ServiceListResponse listServices() {
         List<ServiceOverview> list = new ArrayList<>();
@@ -62,6 +63,7 @@ public class ServiceCollector {
                 .build();
     }
 
+    // Swarm 모드 활성화 체크 (비활성화 상태면 자동으로 초기화)
     private void ensureSwarmInitialized() throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder(
                 "docker", "info", "--format", "{{.Swarm.LocalNodeState}}"
@@ -113,7 +115,69 @@ public class ServiceCollector {
         }
     }
 
-    // 3) 서비스 삭제
+    // 3) 서비스 상세 정보 및 태스크 조회
+    public ServiceDetail getServiceDetail(String serviceId) {
+        try {
+            // ServiceInspect
+            ProcessBuilder inspectBuilder = new ProcessBuilder(
+                    "docker", "service", "inspect", serviceId, "--format", "{{json .Spec}}"
+            );
+            Process inspectProcess = inspectBuilder.start();
+            StringBuilder specJson = new StringBuilder();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(inspectProcess.getInputStream()))) {
+                String line;
+                while ((line = r.readLine()) != null) specJson.append(line);
+            }
+            inspectProcess.waitFor();
+            JsonNode specNode = MAPPER.readTree(specJson.toString());
+            var overview = listServices().services().stream()
+                    .filter(s -> s.id().equals(serviceId))
+                    .findFirst()
+                    .orElseThrow();
+            // TaskStatus 조회
+            List<TaskStatus> tasks = new ArrayList<>();
+            ProcessBuilder psBuilder = new ProcessBuilder(
+                    "docker", "service", "ps", serviceId, "--format",
+                    "{{.ID}}\t{{.Name}}\t{{.CurrentState}}\t{{.DesiredState}}"
+            );
+            Process psProcess = psBuilder.start();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(psProcess.getInputStream()))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    String[] tok = line.split("\t", 4);
+                    if (tok.length < 4) continue;
+                    tasks.add(TaskStatus.builder()
+                            .id(tok[0])
+                            .name(tok[1])
+                            .currentState(tok[2])
+                            .desiredState(tok[3])
+                            .build());
+                }
+            }
+            psProcess.waitFor();
+            return ServiceDetail.builder()
+                    .id(overview.id())
+                    .name(overview.name())
+                    .mode(overview.mode())
+                    .replicasDesired(overview.replicasDesired())
+                    .replicasRunning(tasks.size())
+                    .image(overview.image())
+                    .constraints(List.of())
+                    .resources(Resources.builder()
+                            .limits(Limits.builder()
+                                    .memory("512M")
+                                    .cpu("0.5")
+                                    .build())
+                            .build())
+                    .tasks(tasks)
+                    .build();
+        } catch (Exception e) {
+            log.error("Service 상세 조회 실패", e);
+            throw new RuntimeException("Service 상세 조회 실패", e);
+        }
+    }
+
+    // 4) 서비스 삭제
     public void removeService(String serviceId) {
         try {
             new ProcessBuilder("docker", "service", "rm", serviceId).start().waitFor();
@@ -123,7 +187,7 @@ public class ServiceCollector {
         }
     }
 
-    // 4) 서비스 스케일링
+    // 5) 서비스 스케일링
     public void scaleService(String serviceId, ScaleRequest req) {
         try {
             ProcessBuilder builder = new ProcessBuilder(
@@ -141,6 +205,33 @@ public class ServiceCollector {
         } catch (Exception e) {
             log.error("Service 스케일링 실패", e);
             throw new RuntimeException("Service 스케일링 실패", e);
+        }
+    }
+
+    // 6) 롤링 업데이트 실행
+    public String rollingUpdateService(String serviceId) {
+        try {
+            ProcessBuilder builder = new ProcessBuilder(
+                    "docker", "service", "update",
+                    "--force",
+                    serviceId
+            );
+            Process process = builder.start();
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader out = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = out.readLine()) != null) {
+                    sb.append(line).append("\n");
+                }
+            }
+            int exit = process.waitFor();
+            if (exit != 0) {
+                throw new RuntimeException("Rolling update 실패: exit code=" + exit);
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.error("Rolling update 실패", e);
+            throw new RuntimeException("Rolling update 실패", e);
         }
     }
 }

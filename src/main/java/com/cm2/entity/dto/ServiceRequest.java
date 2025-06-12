@@ -2,9 +2,13 @@ package com.cm2.entity.dto;
 
 import lombok.Builder;
 
+import java.util.List;
+
 @Builder
 public record ServiceRequest(
         String name,
         String image,
-        int replicas
+        int replicas,
+        List<String> constraints,
+        Resources resources
 ) {}
