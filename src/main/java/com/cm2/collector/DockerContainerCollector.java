@@ -2,7 +2,7 @@ package com.cm2.collector;
 
 import com.cm2.collector.dto.StatsResult;
 import com.cm2.entity.Action;
-import com.cm2.entity.dto.*;
+import com.cm2.entity.dto.summaryapi.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;

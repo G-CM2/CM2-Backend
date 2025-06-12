@@ -5,7 +5,7 @@ import com.cm2.collector.dto.Indicator;
 import com.cm2.collector.dto.StatsResult;
 import com.cm2.collector.dto.StatusSummary;
 import com.cm2.collector.dto.ResourceSummary;
-import com.cm2.entity.dto.SummaryResponse;
+import com.cm2.entity.dto.summaryapi.SummaryResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

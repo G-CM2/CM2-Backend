@@ -1,12 +1,9 @@
 package com.cm2.controller;
 
 import com.cm2.collector.DockerContainerCollector;
-import com.cm2.entity.dto.ActionRequest;
-import com.cm2.entity.dto.ActionResponse;
-import com.cm2.entity.dto.ContainerDetail;
-import com.cm2.entity.dto.ContainerListResponse;
+import com.cm2.entity.dto.summaryapi.ContainerDetail;
+import com.cm2.entity.dto.summaryapi.ContainerListResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
