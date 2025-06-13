@@ -1,10 +1,10 @@
 package com.cm2.controller;
 
 import com.cm2.collector.ServiceCollector;
-import com.cm2.entity.dto.ScaleRequest;
-import com.cm2.entity.dto.ServiceDetail;
-import com.cm2.entity.dto.ServiceListResponse;
-import com.cm2.entity.dto.ServiceRequest;
+import com.cm2.entity.dto.serviceapi.ScaleRequest;
+import com.cm2.entity.dto.serviceapi.ServiceDetail;
+import com.cm2.entity.dto.serviceapi.ServiceListResponse;
+import com.cm2.entity.dto.serviceapi.ServiceRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

@@ -1,6 +1,6 @@
 package com.cm2.collector;
 
-import com.cm2.entity.dto.*;
+import com.cm2.entity.dto.serviceapi.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;

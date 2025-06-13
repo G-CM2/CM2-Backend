@@ -1,4 +1,4 @@
-package com.cm2.entity.dto;
+package com.cm2.entity.dto.serviceapi;
 
 import lombok.Builder;
 

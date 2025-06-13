@@ -1,4 +1,4 @@
-package com.cm2.entity.dto;
+package com.cm2.entity.dto.summaryapi;
 
 import com.cm2.collector.dto.ContainerSummary;
 import com.cm2.collector.dto.ResourceSummary;

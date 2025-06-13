@@ -1,7 +1,7 @@
 package com.cm2.controller;
 
 import com.cm2.collector.DockerSummaryCollector;
-import com.cm2.entity.dto.SummaryResponse;
+import com.cm2.entity.dto.summaryapi.SummaryResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
